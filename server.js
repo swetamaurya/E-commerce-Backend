@@ -2,25 +2,15 @@ require("dotenv").config();
 const express = require("express");
 // const helmet = require("helmet");
 const cors = require("cors");
+const connectDB = require("./middilware/db");
 // const morgan = require("morgan");
-const mongoose = require("mongoose");
-
+ 
 const app = express();
 // app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // app.use(morgan("dev"));
-
-// Database connection
-const connectDB = async (uri) => {
-  try {
-    await mongoose.connect(uri);
-    console.log("MongoDB connected successfully");
-  } catch (error) {
-    console.error("MongoDB connection error:", error);
-    process.exit(1);
-  }
-};
 
 // Routes
 app.use("/api/auth", require("./router/auth"));
@@ -30,9 +20,7 @@ app.use("/api/cart", require("./router/cart"));
 app.use("/api/wishlist", require("./router/wishlist"));
 app.use("/api/orders", require("./router/orders"));
 app.use("/api/payments", require("./router/payments"));
-app.use("/api/user", require("./router/user"));
-app.use("/api/products", require("./router/product"));
-
+  
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
 app.use((err, _req, res, _next) => {
@@ -41,6 +29,8 @@ app.use((err, _req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 5002;
-connectDB(process.env.MONGO_URL || "mongodb://localhost:27017/royal-thread").then(() => {
+ 
+// console.log("Connecting to database:", process.env.MONGO_URI);
+connectDB(process.env.MONGO_URI).then(() => {
   app.listen(PORT, () => console.log(`[api] running on :${PORT}`));
 });
