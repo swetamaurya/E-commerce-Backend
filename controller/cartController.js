@@ -102,26 +102,38 @@ exports.removeFromCart = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Cart not found' });
     }
 
-    const before = cart.items.length;
-    cart.items = cart.items.filter((it) => asId(it.product) !== asId(productId));
+    if (!cart.items || !cart.items.length) {
+      return res.status(404).json({ success: false, message: 'Cart is empty' });
+    }
 
-    if (cart.items.length === before) {
+    // Normalize IDs to strings for comparison
+    const normalizeId = (id) => {
+      if (id && id.toString) return id.toString();
+      return id;
+    };
+
+    const beforeCount = cart.items.length;
+    cart.items = cart.items.filter(item => {
+      const prodId = normalizeId(item.product || item.productId || null);
+      return prodId !== normalizeId(productId);
+    });
+
+    if (cart.items.length === beforeCount) {
       return res.status(404).json({ success: false, message: 'Item not found in cart' });
     }
 
+    // Assuming recomputeTotal recalculates cart.total based on items
     recomputeTotal(cart);
+
     await cart.save();
 
-    res.status(200).json({
-      success: true,
-      message: 'Item removed from cart',
-      data: cart,
-    });
+    res.status(200).json({ success: true, message: 'Item removed', data: cart });
   } catch (error) {
     console.error('Error removing from cart:', error);
     res.status(500).json({ success: false, message: 'Server error while removing from cart' });
   }
 };
+
 
 // PUT /cart/update/:productId  { quantity }
 exports.updateCartItem = async (req, res) => {

@@ -1,15 +1,33 @@
-// router/product.js
 const express = require('express');
 const router = express.Router();
 const productController = require('../controller/productController');
+const auth = require('../middilware/auth');
 
-// List for cards (only first image)
-router.get('/', productController.getProducts);
+// Admin role check middleware
+const checkAdminRole = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    next();
+  } else {
+    return res.status(403).json({ 
+      success: false, 
+      message: 'Access denied. Admin privileges required.' 
+    });
+  }
+};
+ router.get('/getAll', productController.getAllProducts);
 
-// Full detail (all images)
-router.get('/:id', productController.getProductById);
+ router.get('/category/:category', productController.getProductsByCategory);
 
-// (Optional) create
-router.post('/', productController.createProduct);
+ router.get('/featured', productController.getFeaturedProducts);
+
+ router.get('/search', productController.searchProducts);
+
+ router.get('/:id', productController.getProductById);
+
+ router.post('/create', auth, checkAdminRole, productController.createProduct);
+
+ router.put('/update:id', auth, checkAdminRole, productController.updateProduct);
+
+ router.delete('/delete:id', auth, checkAdminRole, productController.deleteProduct);
 
 module.exports = router;

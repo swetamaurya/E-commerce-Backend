@@ -7,7 +7,7 @@ const router = express.Router();
 // Register endpoint
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, mobile, role } = req.body;
 
     // 1) check existing
     const existing = await User.findOne({ email });
@@ -22,11 +22,11 @@ router.post("/register", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
 
     // 3) create user
-    const user = await User.create({ name, email, passwordHash });
+    const user = await User.create({ name, email, passwordHash, mobile, role });  
 
     // 4) jwt
     const token = jwt.sign(
-      { id: user._id },                         // keep 'id' to match auth middleware
+      { id: user._id, role: user.role },                         // keep 'id' to match auth middleware  
       process.env.JWT_SECRET || "dev-secret",
       { expiresIn: "7d" }
     );
@@ -35,7 +35,7 @@ router.post("/register", async (req, res) => {
       success: true,
       message: "User registered successfully",
       data: {
-        user: { id: user._id, name: user.name, email: user.email },
+        user: { id: user._id, name: user.name, email: user.email, role: user.role, mobile: user.mobile },         
         token,
       },
     });
@@ -64,7 +64,7 @@ router.post("/login", async (req, res) => {
 
     // 3) issue JWT (keep the same payload key you use in middleware, e.g. id)
     const token = jwt.sign(
-      { id: user._id },
+      { id: user._id, role: user.role },
       process.env.JWT_SECRET || "dev-secret",
       { expiresIn: "7d" }
     );
@@ -74,7 +74,13 @@ router.post("/login", async (req, res) => {
       success: true,
       message: "Login successful",
       data: {
-        user: { id: user._id, name: user.name, email: user.email },
+        user: { 
+          id: user._id, 
+          name: user.name, 
+          email: user.email, 
+          role: user.role,
+          mobile: user.mobile 
+        },
         token
       }
     });

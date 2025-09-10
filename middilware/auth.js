@@ -7,7 +7,7 @@ async function auth(req, res, next) {
     const token = hdr.startsWith("Bearer ") ? hdr.slice(7) : null;
     if (!token) return res.status(401).json({ success: false, message: "Unauthorized" });
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = { id: decoded.id };
+    req.user = { id: decoded.id, role: decoded.role };
     next();
   } catch (e) {
     return res.status(401).json({ success: false, message: "Unauthorized" });
