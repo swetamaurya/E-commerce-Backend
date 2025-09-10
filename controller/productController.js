@@ -79,8 +79,35 @@ const getProductById = async (req, res) => {
 // Get products by category (public)
 const getProductsByCategory = async (req, res) => {
   try {
-    const { category } = req.params;
+    let { category } = req.params;
     const { page = 1, limit = 10 } = req.query;
+
+
+    //    enum: [
+    //   'Area Rugs', 
+    //   'Bath Mats', 
+    //   'Bedside Runners', 
+    //   'Cotton Yoga Mats', 
+    //   'Mats Collection',
+    //   'Other'
+    // ], 
+
+
+
+    if(category === 'bedside-runners') {
+      category = 'Bedside Runners';
+    }else if(category === 'area-rugs') {
+      category = 'Area Rugs';
+    }else if(category === 'bath-mats') {
+      category = 'Bath Mats';
+    }else if(category === 'cotton-yoga-mats') {
+      category = 'Cotton Yoga Mats';
+    }else if(category === 'mats-collection') {
+      category = 'Mats Collection';
+    }else if(category === 'other') {
+      category = 'Other';
+    }
+
 
     const query = { 
       category: { $regex: new RegExp(category, 'i') },
@@ -204,7 +231,7 @@ const createProduct = async (req, res) => {
   try {
     const {
       name, description, price, mrp, stock, images, category, brand,
-      variants,  isActive, isFeatured, popularity
+      variants, metaTitle, metaDescription, keywords, isActive, isFeatured, popularity
     } = req.body;
 
     // Validate required fields
@@ -245,9 +272,9 @@ const createProduct = async (req, res) => {
       category: category.trim(),
       brand: brand?.trim() || 'Royal Thread',
       variants: variants || [],
-      // metaTitle: metaTitle?.trim() || name.trim(),
-      // metaDescription: metaDescription?.trim() || description?.trim() || '',
-      // keywords: Array.isArray(keywords) ? keywords : (keywords ? keywords.split(',').map(k => k.trim()).filter(k => k) : []),
+      metaTitle: metaTitle?.trim() || name.trim(),
+      metaDescription: metaDescription?.trim() || description?.trim() || '',
+      keywords: Array.isArray(keywords) ? keywords : (keywords ? keywords.split(',').map(k => k.trim()).filter(k => k) : []),
       isActive: isActive !== undefined ? Boolean(isActive) : true,
       isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : false,
       popularity: popularity ? parseInt(popularity) : 80,
