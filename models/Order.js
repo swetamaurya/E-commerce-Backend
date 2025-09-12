@@ -26,13 +26,13 @@ const orderSchema = new mongoose.Schema({
   taxAmount: { type: Number, default: 0 },
   status: { 
     type: String, 
-    enum: ['pending','transit','out for delivery','delivered', 'cancelled', 'returned'],
-    default: 'pending' 
+    enum: ['Pending','Cancelled', 'Returned', 'Order Received', 'Processing', 'Packed', 'Shipped', 'In Transit', 'Out for Delivery', 'Delivered'],
+    default: 'Pending' 
   },
   paymentStatus: { 
     type: String, 
-    enum: ['pending', 'paid', 'failed', 'refunded','cod'],
-    default: 'pending' 
+    enum: ['Pending', 'Paid', 'Failed', 'Refunded','COD' ],
+    default: 'Pending' 
   },
   paymentMethod: { type: String, required: true },
   trackingNumber: String,
@@ -44,8 +44,15 @@ const orderSchema = new mongoose.Schema({
 // Generate order ID before saving
 orderSchema.pre('save', async function(next) {
   if (!this.orderId) {
-    const count = await mongoose.model('Order').countDocuments();
-    this.orderId = `ORD-${String(count + 1).padStart(6, '0')}`;
+    try {
+      const count = await mongoose.model('Order').countDocuments();
+      this.orderId = `ORD-${String(count + 1).padStart(6, '0')}`;
+      console.log('Generated orderId:', this.orderId);
+    } catch (error) {
+      console.error('Error generating orderId:', error);
+      // Fallback orderId
+      this.orderId = `ORD-${Date.now()}`;
+    }
   }
   next();
 });

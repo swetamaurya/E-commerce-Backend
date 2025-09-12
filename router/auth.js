@@ -102,7 +102,7 @@ router.get("/me", async (req, res) => {
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev-secret");
     const user = await User.findById(decoded.userId).select("-passwordHash");
     
     if (!user) {

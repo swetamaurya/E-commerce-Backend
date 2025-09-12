@@ -8,13 +8,13 @@ const paymentSchema = new mongoose.Schema({
   currency: { type: String, default: 'INR' },
   method: { 
     type: String, 
-    enum: ['credit_card', 'debit_card', 'upi', 'net_banking', 'wallet', 'cod'],
+    enum: ['Credit_card', 'Debit_card', 'UPI', 'Net_banking', 'Wallet', 'COD'],
     required: true 
   },
   status: { 
     type: String, 
-    enum: ['pending', 'success', 'failed', 'cancelled', 'refunded'],
-    default: 'pending' 
+    enum: ['Pending', 'Success', 'Failed', 'Cancelled', 'Refunded'],
+    default: 'Pending' 
   },
   transactionId: String,
   gatewayResponse: mongoose.Schema.Types.Mixed,
