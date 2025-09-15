@@ -1,13 +1,36 @@
 const Order = require('../models/Order'); // Your Order Mongoose model
+const { broadcastOrderUpdate } = require('./sseController');
 
-// Get all orders
+// Get all orders (unified for both users and admins)
 exports.getAllOrders = async (req, res) => {
   try {
-    const orders = await Order.find().sort({ createdAt: -1 });
-    res.json(orders);
+    const { admin } = req.query;
+    
+    // Check if this is an admin request
+    const isAdmin = admin === 'true' && req.user && req.user.role === 'admin';
+    
+    let orders;
+    
+    if (isAdmin) {
+      // Admin can see all orders with user details
+      orders = await Order.find()
+        .populate('userId', 'name email')
+        .sort({ createdAt: -1 });
+    } else {
+      // Regular users see all orders (public endpoint)
+      orders = await Order.find().sort({ createdAt: -1 });
+    }
+    
+    res.json({
+      success: true,
+      data: orders
+    });
   } catch (error) {
     console.error('Error fetching orders:', error);
-    res.status(500).json({ message: 'Server error fetching orders' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error fetching orders' 
+    });
   }
 };
 
@@ -181,5 +204,202 @@ exports.deleteOrder = async (req, res) => {
   } catch (error) {
     console.error('Error deleting order:', error);
     res.status(500).json({ message: 'Server error deleting order' });
+  }
+};
+
+// Update order status (admin only)
+exports.updateOrderStatus = async (req, res) => {
+  try {
+    // Check if user is admin
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
+      });
+    }
+
+    const { orderId } = req.params;
+    const { status, trackingNumber, notes, estimatedDelivery } = req.body;
+
+    console.log('Admin updating order status:', {
+      orderId,
+      status,
+      trackingNumber,
+      notes,
+      estimatedDelivery,
+      estimatedDeliveryType: typeof estimatedDelivery
+    });
+
+    // Validate status
+    const validStatuses = ['Pending','Cancelled', 'Returned', 'Order Received', 'Processing', 'Packed', 'Shipped', 'In Transit', 'Out for Delivery', 'Delivered'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status'
+      });
+    }
+
+    // Find and update order
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    const oldStatus = order.status;
+    order.status = status;
+    
+    if (trackingNumber) order.trackingNumber = trackingNumber;
+    if (notes) order.notes = notes;
+    if (estimatedDelivery) order.estimatedDelivery = new Date(estimatedDelivery);
+    
+    // Set delivered date if status is delivered
+    if (status === 'Delivered') {
+      order.deliveredAt = new Date();
+    }
+
+    await order.save();
+
+    console.log('Order updated successfully:', {
+      orderId: order.orderId,
+      status: order.status,
+      trackingNumber: order.trackingNumber,
+      notes: order.notes,
+      estimatedDelivery: order.estimatedDelivery,
+      estimatedDeliveryType: typeof order.estimatedDelivery,
+      deliveredAt: order.deliveredAt
+    });
+
+    // Broadcast update to user
+    console.log('Broadcasting order update to user:', order.userId);
+    console.log('Order data:', {
+      orderId: order.orderId,
+      status: order.status,
+      trackingNumber: order.trackingNumber,
+      notes: order.notes,
+      estimatedDelivery: order.estimatedDelivery,
+      deliveredAt: order.deliveredAt
+    });
+    
+    broadcastOrderUpdate(order.userId, orderId, status, {
+      orderId: order.orderId,
+      status: order.status,
+      trackingNumber: order.trackingNumber,
+      notes: order.notes,
+      estimatedDelivery: order.estimatedDelivery,
+      deliveredAt: order.deliveredAt
+    });
+
+    res.json({
+      success: true,
+      message: 'Order status updated successfully',
+      data: {
+        orderId: order.orderId,
+        oldStatus,
+        newStatus: status,
+        trackingNumber: order.trackingNumber,
+        estimatedDelivery: order.estimatedDelivery,
+        notes: order.notes
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating order status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error updating order status'
+    });
+  }
+};
+
+// Get order details (unified for both users and admins)
+exports.getOrderDetails = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { admin } = req.query;
+    
+    // Check if this is an admin request
+    const isAdmin = admin === 'true' && req.user && req.user.role === 'admin';
+    
+    let order;
+    
+    if (isAdmin) {
+      // Admin can see any order with full details
+      order = await Order.findById(orderId)
+        .populate('userId', 'name email mobile')
+        .populate('items.productId', 'name images');
+    } else {
+      // Regular users can only see their own orders
+      const userId = req.user.id;
+      order = await Order.findOne({ 
+        $or: [
+          { _id: orderId, userId: userId },
+          { orderId: orderId, userId: userId }
+        ]
+      })
+      .populate('items.productId', 'name images');
+    }
+    
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: order
+    });
+  } catch (error) {
+    console.error('Error fetching order details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error fetching order details'
+    });
+  }
+};
+
+// Get order statistics (admin only)
+exports.getOrderStats = async (req, res) => {
+  try {
+    // Check if user is admin
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
+      });
+    }
+
+    const stats = await Order.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const totalOrders = await Order.countDocuments();
+    const todayOrders = await Order.countDocuments({
+      createdAt: { $gte: new Date().setHours(0, 0, 0, 0) }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalOrders,
+        todayOrders,
+        statusBreakdown: stats
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching order stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error fetching order statistics'
+    });
   }
 };

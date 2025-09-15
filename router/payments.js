@@ -1,14 +1,15 @@
 const express = require('express');
 const router = express.Router();
+const { createOrder, verifyPayment, getPaymentDetails } = require('../controller/paymentController');
+const { authenticateToken } = require('../middilware/auth');
 
-// Process payment
-router.post('/process', (req, res) => {
-  res.json({ message: 'Process payment route' });
-});
+// Create Razorpay order
+router.post('/create-order', authenticateToken, createOrder);
 
-// Get payment status
-router.get('/status/:id', (req, res) => {
-  res.json({ message: `Get payment status for ID: ${req.params.id}` });
-});
+// Verify payment
+router.post('/verify-payment', authenticateToken, verifyPayment);
+
+// Get payment details
+router.get('/payment/:paymentId', authenticateToken, getPaymentDetails);
 
 module.exports = router;

@@ -1,18 +1,41 @@
 const Product = require('../models/Product');
 
-// Get all products (public)
+// Get all products (unified for both users and admins)
 const getAllProducts = async (req, res) => {
   try {
-    const { page = 1, limit = 10, category, featured } = req.query;
+    const { page = 1, limit = 10, category, featured, search, admin } = req.query;
     
-    let query = { isActive: true };
+    // Check if this is an admin request
+    const isAdmin = admin === 'true' && req.user && req.user.role === 'admin';
     
+    // Build base query
+    let query = {};
+    
+    // For regular users, only show active products
+    // For admins, show all products (including inactive)
+    if (!isAdmin) {
+      query.isActive = true;
+    }
+    
+    // Apply category filter
     if (category) {
       query.category = { $regex: new RegExp(category, 'i') };
     }
     
+    // Apply featured filter
     if (featured === 'true') {
       query.isFeatured = true;
+    }
+    
+    // Apply search filter (for admin)
+    if (search && isAdmin) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } },
+        { brand: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { sku: { $regex: search, $options: 'i' } }
+      ];
     }
 
     const total = await Product.countDocuments(query);
@@ -27,13 +50,28 @@ const getAllProducts = async (req, res) => {
       id: product._id
     }));
 
-    res.json({
-      success: true,
-      total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / limit),
-      data: productsWithId
-    });
+    // Return different response format based on user type
+    if (isAdmin) {
+      res.json({
+        success: true,
+        data: productsWithId,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          totalProducts: total,
+          hasNextPage: parseInt(page) < Math.ceil(total / limit),
+          hasPrevPage: parseInt(page) > 1
+        }
+      });
+    } else {
+      res.json({
+        success: true,
+        total,
+        page: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        data: productsWithId
+      });
+    }
   } catch (err) {
     console.error('Error fetching products:', err);
     res.status(500).json({
@@ -226,84 +264,116 @@ const searchProducts = async (req, res) => {
   }
 };
 
+
 // Create product (admin only)
 const createProduct = async (req, res) => {
   try {
+    // Auth guard (route also protects, but double-check)
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied. Admin privileges required.' });
+    }
+
     const {
-      name, description, price, mrp, stock, images, category, brand,
-      variants, metaTitle, metaDescription, keywords, isActive, isFeatured, popularity
+      name, description, category, brand, meterial,
+      colors, sizes,
+      price, mrp, stock,
+      images,
+      specialFeature, isActive, isFeatured
     } = req.body;
 
-    // Validate required fields
-    if (!name || !price || !category || stock === undefined) {
+    // Required fields for simplified (non-variant) product
+    if (!name || !description || !category || !meterial || price === undefined || stock === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: name, price, category, stock'
+        message: 'Missing required fields: name, description, category, meterial, price, stock'
       });
     }
 
-    // Process images - convert string array to object array if needed
-    let processedImages = [];
-    if (images && Array.isArray(images)) {
-      processedImages = images
-        .filter(img => img && typeof img === 'string' && img.trim())
-        .slice(0, 10)
-        .map((img, index) => ({
-          url: img.trim(),
-          alt: `Product image ${index + 1}`,
-          isPrimary: index === 0
-        }));
+    // Normalize images: accept string[] or object[]
+    const processedImages = Array.isArray(images)
+      ? images
+          .filter(img => (typeof img === 'string' ? img.trim() : img?.url))
+          .slice(0, 10)
+          .map((img, idx) =>
+            typeof img === 'string'
+              ? { url: img.trim(), alt: `Product image ${idx + 1}`, isPrimary: idx === 0 }
+              : {
+                  url: img.url.trim(),
+                  alt: img.alt?.trim() || `Product image ${idx + 1}`,
+                  thumbnail: img.thumbnail?.trim(),
+                  isPrimary: Boolean(img.isPrimary)
+                }
+          )
+      : [];
+
+    // CRITICAL FIX: Ensure only ONE image has isPrimary: true
+    if (processedImages.length > 0) {
+      const primaryImageIndex = processedImages.findIndex(img => img.isPrimary === true);
+      const finalImages = processedImages.map((img, index) => ({
+        ...img,
+        isPrimary: index === (primaryImageIndex >= 0 ? primaryImageIndex : 0)
+      }));
+      processedImages.splice(0, processedImages.length, ...finalImages);
     }
 
-    // Generate slug
-    const slug = name.toLowerCase()
-      .replace(/[^a-z0-9 -]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .trim('-');
-
-    const product = new Product({
-      name: name.trim(),
-      description: description?.trim() || '',
-      price: parseFloat(price),
-      mrp: mrp ? parseFloat(mrp) : parseFloat(price) * 1.5,
-      stock: parseInt(stock),
+    const doc = new Product({
+      name: name.toString().trim(),
+      description: description.toString().trim(),
+      category: category.toString().trim(),
+      brand: brand?.toString().trim() || 'Royal Thread',
+      meterial: meterial.toString().trim(),
+      colors: Array.isArray(colors) ? colors.map(c => c.toString().trim()).filter(Boolean) : [],
+      sizes: Array.isArray(sizes) ? sizes.map(s => s.toString().trim()).filter(Boolean) : [],
+      price: Number(price),
+      mrp: mrp !== undefined ? Number(mrp) : Number(price),
+      stock: parseInt(stock, 10),
       images: processedImages,
-      category: category.trim(),
-      brand: brand?.trim() || 'Royal Thread',
-      variants: variants || [],
-      metaTitle: metaTitle?.trim() || name.trim(),
-      metaDescription: metaDescription?.trim() || description?.trim() || '',
-      keywords: Array.isArray(keywords) ? keywords : (keywords ? keywords.split(',').map(k => k.trim()).filter(k => k) : []),
+      specialFeature: specialFeature?.toString().trim() || '',
       isActive: isActive !== undefined ? Boolean(isActive) : true,
-      isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : false,
-      popularity: popularity ? parseInt(popularity) : 80,
-      slug
+      isFeatured: isFeatured !== undefined ? Boolean(isFeatured) : false
     });
 
-    await product.save();
+    // Validate explicitly to return readable 400s
+    try {
+      await doc.validate();
+    } catch (ve) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: ve.errors
+          ? Object.fromEntries(Object.entries(ve.errors).map(([k, v]) => [k, v.message]))
+          : ve.message
+      });
+    }
 
-    res.status(201).json({
+    await doc.save(); // pre-save will create slug and SKU
+
+    return res.status(201).json({
       success: true,
       message: 'Product created successfully',
-      data: product
+      data: doc
     });
   } catch (err) {
-    console.error('Error creating product:', err);
-    res.status(500).json({
-      success: false,
-      message: 'Server error creating product',
-      error: err.message
-    });
+    return res.status(500).json({ success: false, message: 'Server error creating product', error: err.message });
   }
 };
+
 
 // Update product (admin only)
 const updateProduct = async (req, res) => {
   try {
+    // Check if user is admin
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
+      });
+    }
+
     const {
-      name, description, price, mrp, stock, images, category, brand,
-      variants, metaTitle, metaDescription, keywords, isActive, isFeatured, popularity
+      name, description, price, mrp, stock, images, category, brand, meterial,
+      colors, sizes,
+      variants, metaTitle, metaDescription, keywords, isActive, isFeatured, popularity, specialFeature
     } = req.body;
 
     const product = await Product.findById(req.params.id);
@@ -322,6 +392,8 @@ const updateProduct = async (req, res) => {
     if (stock !== undefined) product.stock = typeof stock === 'number' ? stock : parseInt(stock);
     if (category) product.category = category.trim();
     if (brand) product.brand = brand.trim();
+    if (meterial) product.meterial = meterial.trim();
+    if (specialFeature !== undefined) product.specialFeature = specialFeature.trim();
     if (metaTitle) product.metaTitle = metaTitle.trim();
     if (metaDescription) product.metaDescription = metaDescription.trim();
     if (keywords) product.keywords = Array.isArray(keywords) ? keywords : keywords.split(',').map(k => k.trim()).filter(k => k);
@@ -329,19 +401,80 @@ const updateProduct = async (req, res) => {
     if (isActive !== undefined) product.isActive = isActive;
     if (isFeatured !== undefined) product.isFeatured = isFeatured;
     if (popularity !== undefined) product.popularity = typeof popularity === 'number' ? popularity : parseInt(popularity);
+    
+    // Update colors and sizes
+    if (colors !== undefined) {
+      product.colors = Array.isArray(colors) ? colors.map(c => c.toString().trim()).filter(Boolean) : [];
+    }
+    if (sizes !== undefined) {
+      product.sizes = Array.isArray(sizes) ? sizes.map(s => s.toString().trim()).filter(Boolean) : [];
+    }
 
-    // Handle images - convert string array to object array if needed
+    // Handle images - normalize to object array and delete old images
     if (images && Array.isArray(images)) {
-      const processedImages = images
-        .filter(img => img && typeof img === 'string' && img.trim())
-        .slice(0, 10)
-        .map((img, index) => ({
-          url: img.trim(),
-          alt: `Product image ${index + 1}`,
-          isPrimary: index === 0
-        }));
+      const fs = require('fs');
+      const path = require('path');
       
-      product.images = processedImages;
+      // Delete old images that are no longer in the new images array
+      const oldImageUrls = product.images.map(img => img.url);
+      const newImageUrls = images
+        .filter(img => img && (typeof img === 'string' ? img.trim() : img?.url))
+        .map(img => typeof img === 'string' ? img.trim() : img.url.trim());
+      
+      // Find images to delete
+      const imagesToDelete = oldImageUrls.filter(url => !newImageUrls.includes(url));
+      
+      // Delete old images from file system
+      imagesToDelete.forEach(imageUrl => {
+        if (imageUrl && imageUrl.startsWith('/uploads/')) {
+          const imagePath = path.join(__dirname, '..', imageUrl);
+          try {
+            if (fs.existsSync(imagePath)) {
+              fs.unlinkSync(imagePath);
+              console.log('Deleted old image:', imagePath);
+            }
+          } catch (error) {
+            console.error('Error deleting old image:', imagePath, error);
+          }
+        }
+      });
+      
+      // Debug: Log incoming images data
+      console.log('=== UPDATE PRODUCT - INCOMING IMAGES ===');
+      console.log('Raw images from frontend:', JSON.stringify(images, null, 2));
+
+      // Process new images - preserve isPrimary from frontend
+      const processedImages = images
+        .filter(img => img && (typeof img === 'string' ? img.trim() : img?.url))
+        .slice(0, 10)
+        .map((img, index) => {
+          const processed = typeof img === 'string'
+            ? { url: img.trim(), alt: `Product image ${index + 1}`, isPrimary: index === 0 }
+            : {
+                url: img.url.trim(),
+                alt: img.alt?.trim() || `Product image ${index + 1}`,
+                thumbnail: img.thumbnail?.trim(),
+                isPrimary: Boolean(img.isPrimary)
+              };
+          console.log(`Image ${index}:`, processed);
+          return processed;
+        });
+
+      console.log('Processed images:', JSON.stringify(processedImages, null, 2));
+      
+      // CRITICAL FIX: Ensure only ONE image has isPrimary: true
+      // Find the image that should be primary (first one with isPrimary: true)
+      const primaryImageIndex = processedImages.findIndex(img => img.isPrimary === true);
+      console.log('Primary image index found:', primaryImageIndex);
+      
+      // Reset all images to isPrimary: false, then set only one as primary
+      const finalImages = processedImages.map((img, index) => ({
+        ...img,
+        isPrimary: index === primaryImageIndex
+      }));
+      
+      console.log('Final images with single primary:', JSON.stringify(finalImages, null, 2));
+      product.images = finalImages;
     }
 
     // Generate slug if name changed
@@ -373,7 +506,16 @@ const updateProduct = async (req, res) => {
 // Delete product (admin only)
 const deleteProduct = async (req, res) => {
   try {
-    const product = await Product.findByIdAndDelete(req.params.id);
+    // Check if user is admin
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
+      });
+    }
+
+    // Find product first to get image paths
+    const product = await Product.findById(req.params.id);
     
     if (!product) {
       return res.status(404).json({
@@ -382,9 +524,32 @@ const deleteProduct = async (req, res) => {
       });
     }
 
+    // Delete associated images from file system
+    if (product.images && product.images.length > 0) {
+      const fs = require('fs');
+      const path = require('path');
+      
+      product.images.forEach(image => {
+        if (image.url && image.url.startsWith('/uploads/')) {
+          const imagePath = path.join(__dirname, '..', image.url);
+          try {
+            if (fs.existsSync(imagePath)) {
+              fs.unlinkSync(imagePath);
+              console.log('Deleted image:', imagePath);
+            }
+          } catch (error) {
+            console.error('Error deleting image:', imagePath, error);
+          }
+        }
+      });
+    }
+
+    // Delete product from database
+    await Product.findByIdAndDelete(req.params.id);
+
     res.json({
       success: true,
-      message: 'Product deleted successfully'
+      message: 'Product and associated images deleted successfully'
     });
   } catch (err) {
     console.error('Error deleting product:', err);

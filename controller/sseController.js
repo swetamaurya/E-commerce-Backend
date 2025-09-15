@@ -91,6 +91,13 @@ exports.orderStatusSSE = (req, res) => {
 
 // Broadcast order status update to specific user
 exports.broadcastOrderUpdate = (userId, orderId, newStatus, orderData) => {
+  console.log('=== BROADCAST ORDER UPDATE ===');
+  console.log('Target userId:', userId);
+  console.log('OrderId:', orderId);
+  console.log('New Status:', newStatus);
+  console.log('Active connections:', connections.size);
+  console.log('Connection details:', Array.from(connections.entries()));
+  
   const message = {
     type: 'order_update',
     orderId,
@@ -99,18 +106,26 @@ exports.broadcastOrderUpdate = (userId, orderId, newStatus, orderData) => {
     timestamp: new Date().toISOString()
   };
 
+  console.log('Message to send:', message);
+
   // Find all connections for this user
+  let sentCount = 0;
   for (const [connectionId, connection] of connections) {
+    console.log(`Checking connection ${connectionId} for user ${connection.userId}`);
     if (connection.userId === userId) {
       try {
         connection.res.write(`data: ${JSON.stringify(message)}\n\n`);
-        console.log(`Order update sent to user ${userId} for order ${orderId}: ${newStatus}`);
+        console.log(`✅ Order update sent to user ${userId} for order ${orderId}: ${newStatus}`);
+        sentCount++;
       } catch (error) {
-        console.error('Error sending update to user:', error);
+        console.error('❌ Error sending update to user:', error);
         connections.delete(connectionId);
       }
     }
   }
+  
+  console.log(`Total updates sent: ${sentCount}`);
+  console.log('=== END BROADCAST ===');
 };
 
 // Broadcast to all admin connections

@@ -2,21 +2,21 @@
 const express = require('express');
 const router = express.Router();
 const wishlistController = require('../controller/wishlistController');
-const auth = require('../middilware/auth');
+const { auth, authorize } = require('../middilware/auth');
 
 // Get user's wishlist
-router.get('/', auth, wishlistController.getWishlist);
+router.get('/', auth(), authorize(['user','admin']), wishlistController.getWishlist);
 
 // Add item to wishlist
-router.post('/add', auth, wishlistController.addToWishlist);
+router.post('/add', auth(), authorize(['user','admin']), wishlistController.addToWishlist);
 
 // Remove item from wishlist
-router.delete('/remove/:productId', auth, wishlistController.removeFromWishlist);
+router.delete('/remove/:productId', auth(), authorize(['user','admin']), wishlistController.removeFromWishlist);
 
 // Clear wishlist
-router.delete('/clear', auth, wishlistController.clearWishlist);
+router.delete('/clear', auth(), authorize(['user','admin']), wishlistController.clearWishlist);
 
 // Check if item is in wishlist
-router.get('/check/:productId', auth, wishlistController.checkWishlistItem);
+router.get('/check/:productId', auth(), authorize(['user','admin']), wishlistController.checkWishlistItem);
 
 module.exports = router;

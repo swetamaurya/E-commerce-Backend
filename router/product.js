@@ -1,33 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const productController = require('../controller/productController');
-const auth = require('../middilware/auth');
+const { auth, authorize } = require('../middilware/auth'); // updated to export both
 
-// Admin role check middleware
-const checkAdminRole = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
-    next();
-  } else {
-    return res.status(403).json({ 
-      success: false, 
-      message: 'Access denied. Admin privileges required.' 
-    });
-  }
-};
- router.get('/getAll', productController.getAllProducts);
+// ---------------- Public routes (no auth) ----------------
+router.get('/getAll', productController.getAllProducts);
+router.get('/category/:category', productController.getProductsByCategory);
+router.get('/featured', productController.getFeaturedProducts);
+router.get('/search', productController.searchProducts);
+router.get('/:id', productController.getProductById);
 
- router.get('/category/:category', productController.getProductsByCategory);
+// ---------------- Admin routes (auth + role) ----------------
+// Only admins can list all with admin view (e.g., include inactive, pagination controls, etc.)
+router.get('/admin/all', auth(), authorize(['admin']), productController.getAllProducts);
 
- router.get('/featured', productController.getFeaturedProducts);
-
- router.get('/search', productController.searchProducts);
-
- router.get('/:id', productController.getProductById);
-
- router.post('/create', auth, checkAdminRole, productController.createProduct);
-
- router.put('/update:id', auth, checkAdminRole, productController.updateProduct);
-
- router.delete('/delete:id', auth, checkAdminRole, productController.deleteProduct);
+// Create/Update/Delete restricted to admin
+router.post('/create', auth(), authorize(['admin']), productController.createProduct);
+router.put('/update/:id', auth(), authorize(['admin']), productController.updateProduct);
+router.delete('/delete/:id', auth(), authorize(['admin']), productController.deleteProduct);
 
 module.exports = router;

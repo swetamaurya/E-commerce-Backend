@@ -1,5 +1,6 @@
 require("dotenv").config();
 const express = require("express");
+const path = require("path");
 // const helmet = require("helmet");
 const cors = require("cors");
 const connectDB = require("./middilware/db");
@@ -12,6 +13,9 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // app.use(morgan("dev"));
 
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Routes
 app.use("/api/auth", require("./router/auth"));
 app.use("/api/addresses", require("./router/addresses"));
@@ -20,7 +24,8 @@ app.use("/api/cart", require("./router/cart"));
 app.use("/api/wishlist", require("./router/wishlist"));
 app.use("/api/orders", require("./router/orders"));
 app.use("/api/payments", require("./router/payments"));
-app.use("/api/admin/orders", require("./router/adminOrders"));
+app.use("/api/admin", require("./router/admin"));
+app.use("/api/upload", require("./router/upload"));
   
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -29,7 +34,7 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ success: false, error: "Internal error" });
 });
 
-const PORT = process.env.PORT || 5002;
+const PORT = process.env.PORT || 5000;
  
 // console.log("Connecting to database:", process.env.MONGO_URI);
 connectDB(process.env.MONGO_URI).then(() => {
