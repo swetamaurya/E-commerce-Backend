@@ -140,58 +140,6 @@ router.post("/logout", (req, res) => {
   });
 });
 
-// Temporary endpoint to create first admin (no auth required)
-router.post("/create-admin", async (req, res) => {
-  try {
-    const { name, email, password, mobile } = req.body;
-
-    // Check if admin already exists
-    const existingAdmin = await User.findOne({ role: 'admin' });
-    if (existingAdmin) {
-      return res.status(400).json({
-        success: false,
-        message: 'Admin user already exists'
-      });
-    }
-
-    // Check if user already exists
-    const existing = await User.findOne({ email });
-    if (existing) {
-      return res.status(409).json({
-        success: false,
-        message: 'User already exists with this email'
-      });
-    }
-
-    // Hash password
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    // Create admin user
-    const user = await User.create({
-      name: name || 'Admin',
-      email: email || 'admin@royalthread.com',
-      passwordHash,
-      mobile: mobile || '9999999999',
-      role: 'admin'
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Admin user created successfully',
-      data: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
-    });
-  } catch (error) {
-    console.error('Error creating admin:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating admin user'
-    });
-  }
-});
+ 
 
 module.exports = router;
