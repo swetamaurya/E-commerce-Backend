@@ -1,5 +1,6 @@
 const axios = require('axios');
 const path = require('path');
+const fs = require('fs');
 
 // Admin backend configuration
 const ADMIN_BACKEND_URL = process.env.ADMIN_BACKEND_URL || 'https://backend-ecommerce-admin.onrender.com';
@@ -28,7 +29,7 @@ class ImageProxyController {
         imageUrl = decodedFilename;
         console.log(`[IMAGE PROXY] Fetching external image: ${imageUrl}`);
       } else {
-        // Handle local admin backend images
+        // Handle local images - serve directly from local uploads directory
         let localFilename = decodedFilename;
         
         // Clean up filename - remove leading slash if present
@@ -44,14 +45,68 @@ class ImageProxyController {
           });
         }
         
-        // Construct admin backend image URL
-        // If filename already has uploads/ prefix, use it as is, otherwise add it
-        if (localFilename.startsWith('uploads/')) {
-          imageUrl = `${ADMIN_BACKEND_URL}/${localFilename}`;
+        // Check if file exists locally first
+        const localPath = path.join(__dirname, '..', 'uploads', localFilename);
+        console.log(`[IMAGE PROXY] Checking local file: ${localPath}`);
+        
+        if (fs.existsSync(localPath)) {
+          // Serve local file directly
+          console.log(`[IMAGE PROXY] Serving local file: ${localFilename}`);
+          
+          // Set appropriate headers
+          const ext = path.extname(localFilename).toLowerCase();
+          const contentType = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.svg': 'image/svg+xml'
+          }[ext] || 'image/jpeg';
+          
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          res.setHeader('Expires', new Date(Date.now() + 31536000000).toUTCString());
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control');
+          res.setHeader('X-Image-Source', 'local');
+          
+          // Stream the local file
+          const fileStream = fs.createReadStream(localPath);
+          fileStream.pipe(res);
+          
+          console.log(`[IMAGE PROXY] Successfully served local file: ${localFilename}`);
+          return;
         } else {
-          imageUrl = `${ADMIN_BACKEND_URL}/uploads/${localFilename}`;
+          // File doesn't exist locally, serve a placeholder image
+          console.log(`[IMAGE PROXY] Local file not found, serving placeholder: ${localFilename}`);
+          
+          // Create a placeholder image
+          const placeholderSvg = `<svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100%" height="100%" fill="#f3f4f6"/>
+            <rect x="50" y="50" width="300" height="200" fill="#e5e7eb" stroke="#d1d5db" stroke-width="2" rx="8"/>
+            <text x="200" y="120" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#6b7280">
+              Product Image
+            </text>
+            <text x="200" y="140" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#9ca3af">
+              ${localFilename}
+            </text>
+            <text x="200" y="160" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#9ca3af">
+              Image will be available soon
+            </text>
+          </svg>`;
+          
+          res.setHeader('Content-Type', 'image/svg+xml');
+          res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control');
+          res.setHeader('X-Image-Source', 'placeholder');
+          
+          res.status(200).send(placeholderSvg);
+          return;
         }
-        console.log(`[IMAGE PROXY] Fetching local image: ${localFilename} from ${imageUrl}`);
       }
       
       // Retry logic for better reliability

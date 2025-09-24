@@ -141,11 +141,38 @@ const getProductsByCategory = async (req, res) => {
     }else if(category === 'cotton-yoga-mats') {
       category = 'Cotton Yoga Mats';
     }else if(category === 'mats-collection') {
-      category = 'Mats Collection';
+      // For mats collection, include all mat-related categories
+      const matCategories = [
+        // 'Mats Collection', 'Cotton Yoga Mats', 'Bath Mats', 'Bedside Runners',
+         'Aasan Mats',
+         'In Door Mats', 'Out Door Mats'];
+      const query = { 
+        category: { $in: matCategories },
+        isActive: true 
+      };
+      
+      const total = await Product.countDocuments(query);
+      const products = await Product.find(query)
+        .sort({ popularity: -1, createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(parseInt(limit));
+
+      // Add id field for frontend compatibility
+      const productsWithId = products.map(product => ({
+        ...product.toObject(),
+        id: product._id
+      }));
+
+      return res.json({
+        success: true,
+        total,
+        page: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        data: productsWithId
+      });
     }else if(category === 'other') {
       category = 'Other';
     }
-
 
     const query = { 
       category: { $regex: new RegExp(category, 'i') },
