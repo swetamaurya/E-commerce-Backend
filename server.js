@@ -4,7 +4,6 @@ const path = require("path");
 
 const cors = require("cors");
 const connectDB = require("./middilware/db");
-const imageProxyRouter = require("./router/imageProxy");
 
 const app = express();
 
@@ -15,18 +14,6 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-
-// Add image proxy routes
-app.use('/api/images', imageProxyRouter);
-
-// Optional: Add CORS for image serving
-app.use('/api/images', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Cache-Control');
-  next();
-});
-
 // Routes
 app.use("/api/auth", require("./router/auth"));
 app.use("/api/addresses", require("./router/addresses"));
@@ -36,15 +23,6 @@ app.use("/api/wishlist", require("./router/wishlist"));
 app.use("/api/orders", require("./router/orders"));
 app.use("/api/payments", require("./router/payments"));
 app.use("/api/admin", require("./router/admin"));
-// Optional: Add a test endpoint
-app.get('/api/test-image-proxy', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Image proxy is working',
-    testUrl: `${req.protocol}://${req.get('host')}/api/images/proxy/test-image.png`,
-    healthCheck: `${req.protocol}://${req.get('host')}/api/images/health`
-  });
-});
 
 
   
@@ -55,7 +33,7 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ success: false, error: "Internal error" });
 });
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 6001;
 
 // Start the server
 const startServer = async () => {
